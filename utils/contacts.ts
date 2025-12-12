@@ -236,6 +236,15 @@ end tell`;
 				);
 			};
 
+			// Helper to check if searchTerm appears as a word boundary match in text
+			const matchesAsWord = (text: string, searchTerm: string) => {
+				const words = text.split(/\s+/);
+				return words.some(word =>
+					word === searchTerm ||
+					word.startsWith(searchTerm)
+				);
+			};
+
 			// Try multiple fuzzy matching strategies
 			const strategies = [
 				// Exact match (case insensitive)
@@ -248,10 +257,10 @@ end tell`;
 				},
 				// Starts with search term (cleaned)
 				(personName: string) => cleanName(personName).startsWith(searchName),
-				// Contains search term (cleaned)
-				(personName: string) => cleanName(personName).includes(searchName),
-				// Search term contains person name (for nicknames, cleaned)
-				(personName: string) => searchName.includes(cleanName(personName)),
+				// Word-boundary match (prevents "trinidad" matching "dad")
+				(personName: string) => matchesAsWord(cleanName(personName), searchName),
+				// Search term matches as word in person name (for nicknames)
+				(personName: string) => matchesAsWord(searchName, cleanName(personName)),
 				// First name match (handle variations)
 				(personName: string) => {
 					const cleanedName = cleanName(personName);
@@ -272,14 +281,14 @@ end tell`;
 					const lastName = nameParts[nameParts.length - 1];
 					return lastName === searchName || lastName.startsWith(searchName);
 				},
-				// Substring match in any word
+				// Word match with repeated character normalization
 				(personName: string) => {
 					const cleanedName = cleanName(personName);
 					const words = cleanedName.split(" ");
 					return words.some(
 						(word) =>
-							word.includes(searchName) ||
-							searchName.includes(word) ||
+							word === searchName ||
+							word.startsWith(searchName) ||
 							word.replace(/(.)\1+/g, "$1") === searchName,
 					);
 				},
@@ -303,15 +312,17 @@ end tell`;
 		console.error(
 			`Error finding contact: ${error instanceof Error ? error.message : String(error)}`,
 		);
-		// Final fallback - try simple fuzzy matching
+		// Final fallback - try word-boundary matching
 		try {
 			const allNumbers = await getAllNumbers();
 			const searchName = name.toLowerCase().trim();
-			const closestMatch = Object.keys(allNumbers).find(
-				(personName) =>
-					personName.toLowerCase().includes(searchName) ||
-					searchName.includes(personName.toLowerCase()),
-			);
+			const closestMatch = Object.keys(allNumbers).find((personName) => {
+				const lowerName = personName.toLowerCase();
+				const words = lowerName.split(/\s+/);
+				return words.some(
+					(word) => word === searchName || word.startsWith(searchName),
+				);
+			});
 			if (closestMatch) {
 				console.error(`Fallback found match for "${name}": ${closestMatch}`);
 				return allNumbers[closestMatch];
